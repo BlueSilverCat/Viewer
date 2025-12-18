@@ -26,16 +26,6 @@ def resize(image, width, height):
   return image.resize(size, Image.LANCZOS)
 
 
-def getFiles(path, extensions=None, *, isRecuse=False):
-  files = []
-  for file in path.iterdir():
-    if file.is_file() and (extensions is None or file.suffix in extensions):
-      files.append(file)
-    if file.is_dir() and isRecuse:
-      files += getFiles(file, extensions, isRecuse=isRecuse)
-  return files
-
-
 class SubWindow(tk.Toplevel):
   def __init__(self, master=None, title="", geometry="0x0+0+0"):
     super().__init__(master)
@@ -77,15 +67,16 @@ class Viewer(tk.Frame):
     ".png",
   )
 
-  def __init__(self, directory, isRecurse, master=None):
+  def __init__(self, master, directory, isRecurse, isKeepMemory):
     super().__init__(master)
     self.root = root
     self.subWindows = []
-    self.resolutions = []
+    self.resolutions = []  # ディスプレイが2つ固定ならばもっと単純になる。
     self.orientations = []
     self.directory = directory
     self.isRecurse = isRecurse
-    self.files = []
+    self.keepMemory = isKeepMemory
+    self.files = []  # {"path":, "image":, "originalSize"}
     self.current = 0
     self.end = 0
     self.isPrint = False
@@ -95,10 +86,10 @@ class Viewer(tk.Frame):
     self.setLabel()
     self.getResolutions()
     self.root.geometry(f"{self.resolutions[0][0] // 2}x35+0+0")
-    self.getFiles()
     self.createSubWindows()
     self.setBinds()
-    self.openImage()
+    self.getFiles()
+    self.drawImage()
     self.pack()
     self.liftTop()
 
@@ -154,30 +145,58 @@ class Viewer(tk.Frame):
       w.destroy()
     self.root.destroy()
 
+  def _getFiles(self, path):
+    files = []
+    for file in path.iterdir():
+      if file.is_file() and file.suffix in Viewer.Extensions:
+        files.append({"path": file})
+      if file.is_dir() and self.isRecurse:
+        files += self._getFiles(file)
+    return files
+
   def getFiles(self):
-    self.files = getFiles(self.directory, Viewer.Extensions, isRecuse=self.isRecurse)
+    self.files = self._getFiles(self.directory)
     self.end = len(self.files)
 
-  def updateText(self, i, size, resized):
-    text = f"{self.current:{len(str(self.end))}} / {self.end}: {self.files[self.current].name} [{size[0]}, {size[1]}{resized}]"
+  def getSubWindowIndex(self, orientation):
+    for i, o in enumerate(self.orientations):
+      if o == orientation:
+        return i
+    return 0
+
+  def updateText(self):
+    fileData = self.files[self.current]
+    text = f"{self.current:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}{fileData['image'].size}]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
     if self.isPrint:
+      i = self.getSubWindowIndex(fileData["orientation"])
       self.subWindows[i].setText(text)
 
-  def resize(self, image):
+  def openImage(self):
+    image = Image.open(self.files[self.current]["path"])
     w, h = image.size
     o = "landscape" if w >= h else "portrait"
-    i = U.indexList(self.orientations, o, 0)
+    i = self.getSubWindowIndex(o)
     image = resize(image, *self.resolutions[i])
-    return (i, image, (w, h), image.size)
+    return {
+      "path": self.files[self.current]["path"],
+      "image": image,
+      "orientation": o,
+      "originalSize": (w, h),
+    }
 
-  def openImage(self):
-    image = Image.open(self.files[self.current])
-    (i, image, size, resized) = self.resize(image)
-    self.subWindows[i].setImage(image)
-    self.updateText(i, size, resized)
+  def drawImage(self):
+    fileData = self.files[self.current]
+    if getattr(fileData, "image", None) is None:
+      fileData = self.openImage()
+      self.files[self.current] = fileData
+    i = self.getSubWindowIndex(fileData["orientation"])
+    self.subWindows[i].setImage(fileData["image"])
+    self.updateText()
     self.subWindows[i].liftTop()
+    if not self.keepMemory:
+      self.files[self.current]["image"] = None
 
   def listTopAll(self, _event):
     for subWindow in self.subWindows:
@@ -194,14 +213,14 @@ class Viewer(tk.Frame):
       self.current += 1
     else:
       self.current = 0
-    self.openImage()
+    self.drawImage()
 
   def previous(self, _event):
     if self.current > 0:
       self.current -= 1
     else:
       self.current = self.end - 1
-    self.openImage()
+    self.drawImage()
 
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
@@ -214,12 +233,12 @@ def argumentParser():
   parser = argparse.ArgumentParser()
   parser.add_argument("directory", type=pathlib.Path)
   parser.add_argument("-r", "--recurse", action="store_true")
-  args = parser.parse_args()
-  return args.directory, args.recurse
+  parser.add_argument("-k", "--keepMemory", action="store_true")
+  return parser.parse_args()
 
 
 if __name__ == "__main__":
-  directory, isRecurse = argumentParser()
+  args = argumentParser()
   root = tk.Tk()
-  viewer = Viewer(directory, isRecurse, root)
+  viewer = Viewer(root, args.directory, args.recurse, args.keepMemory)
   viewer.mainloop()
