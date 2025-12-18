@@ -69,7 +69,6 @@ class Viewer(tk.Frame):
 
   def __init__(self, master, directory, isRecurse, isKeepMemory):
     super().__init__(master)
-    self.root = root
     self.subWindows = []
     self.resolutions = []  # ディスプレイが2つ固定ならばもっと単純になる。
     self.orientations = []
@@ -80,12 +79,12 @@ class Viewer(tk.Frame):
     self.current = 0
     self.end = 0
     self.isPrint = False
-    self.root.title("Viewer")
-    self.root.resizable(True, False)
+    self.master.title("Viewer")
+    self.master.resizable(True, False)
 
     self.setLabel()
     self.getResolutions()
-    self.root.geometry(f"{self.resolutions[0][0] // 2}x35+0+0")
+    self.master.geometry(f"{self.resolutions[0][0] // 2}x35+0+0")
     self.createSubWindows()
     self.setBinds()
     self.getFiles()
@@ -113,8 +112,8 @@ class Viewer(tk.Frame):
     self.orientations = ["landscape" if width >= height else "portrait" for width, height in self.resolutions]
 
   def liftTop(self):
-    self.root.attributes("-topmost", True)
-    self.root.attributes("-topmost", False)
+    self.master.attributes("-topmost", True)
+    self.master.attributes("-topmost", False)
     self.focus_set()
 
   def setBinds(self):
@@ -143,7 +142,7 @@ class Viewer(tk.Frame):
   def destroyAll(self, _event):
     for w in self.subWindows:
       w.destroy()
-    self.root.destroy()
+    self.master.destroy()
 
   def _getFiles(self, path):
     files = []
