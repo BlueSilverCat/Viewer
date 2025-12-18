@@ -21,7 +21,7 @@ def fromGeometry(geometry):
 
 def resize(image, width, height):
   w, h = image.size
-  ratio = width / w if width <= height else height / h
+  ratio = min(width / w, height / h)
   size = (int(w * ratio), int(h * ratio))
   return image.resize(size, Image.LANCZOS)
 
@@ -75,8 +75,8 @@ class Viewer(tk.Frame):
     self.orientations = []
     self.directory = directory
     self.isRecurse = isRecurse
-    self.keepMemory = isKeepMemory
-    self.files = []  # {"path":, "image":, "originalSize"}
+    self.isKeepMemory = isKeepMemory
+    self.files = []  # {"path":, "image":, "orientation":, "originalSize"}
     self.current = 0
     self.end = 0
     self.isPrint = False
@@ -178,7 +178,7 @@ class Viewer(tk.Frame):
     w, h = image.size
     o = "landscape" if w >= h else "portrait"
     i = self.getSubWindowIndex(o)
-    image = resize(image, *self.resolutions[i])
+    image = resize(image, *self.resolutions[i])  # PhotoImageで保存しておくと、古い画像が残ってしまう
     return {
       "path": self.files[self.current]["path"],
       "image": image,
@@ -188,15 +188,16 @@ class Viewer(tk.Frame):
 
   def drawImage(self):
     fileData = self.files[self.current]
-    if getattr(fileData, "image", None) is None:
+    if fileData.get("image", None) is None:
       fileData = self.openImage()
       self.files[self.current] = fileData
     i = self.getSubWindowIndex(fileData["orientation"])
     self.subWindows[i].setImage(fileData["image"])
     self.updateText()
     self.subWindows[i].liftTop()
-    if not self.keepMemory:
-      self.files[self.current]["image"] = None
+
+    if not self.isKeepMemory:
+      self.files[self.current] = {"path": self.files[self.current]["path"]}
 
   def listTopAll(self, _event):
     for subWindow in self.subWindows:
