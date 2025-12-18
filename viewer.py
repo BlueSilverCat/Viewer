@@ -4,6 +4,7 @@ import re
 import tkinter as tk
 from tkinter import ttk
 
+import pyperclip
 import Utility as U
 from PIL import Image, ImageTk
 
@@ -231,10 +232,20 @@ class Viewer(tk.Frame):
 
 def argumentParser():
   parser = argparse.ArgumentParser()
-  parser.add_argument("directory", type=pathlib.Path)
+  group = parser.add_mutually_exclusive_group(required=True)
+  group.add_argument("-i", "--directory", dest="directory", type=pathlib.Path)
+  group.add_argument("-c", "--clipboard", action="store_const", const="<clipboard>", dest="directory")
+  parser.set_defaults(directory="")
   parser.add_argument("-r", "--recurse", action="store_true")
   parser.add_argument("-k", "--keepMemory", action="store_true")
-  return parser.parse_args()
+
+  args = parser.parse_args()
+  if args.directory == "<clipboard>":
+    path = pyperclip.paste()
+    if path[0] == '"' and path[-1] == '"':
+      path = path[1:-1]
+    args.directory = pathlib.Path(path)
+  return args
 
 
 if __name__ == "__main__":
