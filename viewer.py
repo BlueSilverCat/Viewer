@@ -44,56 +44,55 @@ class SubWindow(tk.Toplevel):
     self.sequence = []
     self.durations = []
     self.text = ""
-    self.oldTextId = None
     self.animationId = 0
-    self.info = fromGeometry(geometry)
+    self.geometryData = fromGeometry(geometry)
     self.title(title)
     self.geometry(geometry)
     self.wm_overrideredirect(True)
     self.canvas = tk.Canvas(self)
-    self.canvas.configure(width=self.info[0], height=self.info[1], bg="gray")
+    self.canvas.configure(width=self.geometryData[0], height=self.geometryData[1], bg="gray")
     self.canvas.pack()
 
-  def checkImages(self, images, durations):
+  def checkImages(self, images, durations, text):
     n = len(images)
+    self.clearCanvas()
     if n == 1:
       self.sequence = []
       self.durations = []
       self.drawImage(images[0])
+      self.drawText(text)
     else:
       self.sequence = images
       self.durations = durations
       self.animationId += 1
-      self.animation(0, self.animationId)
+      self.animation(0, self.animationId, text)
 
   def drawImage(self, image):
-    self.image = ImageTk.PhotoImage(image)  # 透過ファイルの場合は、描画に時間が掛かる。
-    self.canvas.create_image(self.info[0] // 2, self.info[1] // 2, image=self.image, anchor=tk.CENTER)
+    self.image = image
+    self.canvas.create_image(self.geometryData[0] // 2, self.geometryData[1] // 2, image=self.image, anchor=tk.CENTER)
 
-  def animation(self, index, aid):
+  def animation(self, index, aid, text):
     end = len(self.sequence)
     if end == 0 or aid != self.animationId:
       return
     i = index if index < end else 0
-    image = self.sequence[i]
-    self.image = ImageTk.PhotoImage(image)
-    self.canvas.create_image(self.info[0] // 2, self.info[1] // 2, image=self.image, anchor=tk.CENTER)
-    self.canvas.after(self.durations[i], self.animation, i + 1, aid)
+    self.image = self.sequence[i]
+    self.canvas.create_image(self.geometryData[0] // 2, self.geometryData[1] // 2, image=self.image, anchor=tk.CENTER)
+    self.drawText(text)
+    self.canvas.after(self.durations[i], self.animation, i + 1, aid, text)
 
   def liftTop(self):
     self.attributes("-topmost", True)
     self.attributes("-topmost", False)
 
-  def deleteOldText(self):
-    if self.oldTextId is not None:
-      self.canvas.delete(self.oldTextId)
+  def clearCanvas(self):
+    self.canvas.delete("all")
 
-  def setText(self, text):
+  def drawText(self, text):
+    if text == "":
+      return
     self.text = text
-    self.deleteOldText()
-    self.oldTextId = self.canvas.create_text(
-      self.info[0] // 2, 20, text=self.text, fill="red", font=("", 20), anchor=tk.CENTER
-    )
+    self.canvas.create_text(self.geometryData[0] // 2, 20, text=self.text, fill="red", font=("", 20), anchor=tk.CENTER)
 
 
 class Viewer(tk.Frame):
@@ -161,6 +160,7 @@ class Viewer(tk.Frame):
     self.bind_all("<KeyPress-Down>", self.withDraw)
     self.bind_all("<KeyPress-Escape>", self.destroyAll)
     self.bind_all("<KeyPress-F12>", self.setPrint)
+    self.master.protocol("WM_DELETE_WINDOW", self.callDestroyAll)
 
   def createSubWindows(self):
     for i, r in enumerate(self.resolutions):
@@ -183,6 +183,9 @@ class Viewer(tk.Frame):
     self.master.destroy()
     self.symlink.unlink(missing_ok=True)
 
+  def callDestroyAll(self):
+    self.destroyAll(None)
+
   def _getFiles(self, path):
     files = []
     for file in path.iterdir():
@@ -204,12 +207,11 @@ class Viewer(tk.Frame):
 
   def updateText(self):
     fileData = self.files[self.current]
-    text = f"{self.current:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}{fileData['images'][0].size}]"
+    # text = f"{self.current:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}{fileData['images'][0].size}]"
+    text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}({fileData['images'][0].width()}, {fileData['images'][0].height()})]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
-    if self.isPrint:
-      i = self.getSubWindowIndex(fileData["orientation"])
-      self.subWindows[i].setText(text)
+    return text
 
   def resizeImage(self, image):
     w, h = image.size
@@ -220,6 +222,7 @@ class Viewer(tk.Frame):
   def getImageData(self):
     path = self.files[self.current]["path"]
     image, orientation, size = self.resizeImage(Image.open(path))
+    image = ImageTk.PhotoImage(image)
     return {
       "path": path,
       "images": [image],
@@ -231,22 +234,22 @@ class Viewer(tk.Frame):
   def createSymlink(self, path):
     if self.symlink is not None:
       self.symlink.unlink(missing_ok=True)
-    self.symlink = pathlib.Path(f"viwer_{uuid.uuid4()}.temp")
+    self.symlink = pathlib.Path(f"Viewer_{uuid.uuid4()}.temp")
     self.symlink.symlink_to(path)
 
-  def openImage(self):
+  def openImage(self):  # この処理を速くしたい
     path = self.files[self.current]["path"]
     self.createSymlink(path)
     success, animation = cv2.imreadanimation(self.symlink)
-
     if not success:
       return self.getImageData()
 
     images = []
     durations = []
     for frame, duration in zip(animation.frames, animation.durations, strict=True):
-      image = Image.fromarray(convertColor(frame))
+      image = Image.fromarray(convertColor(frame))  # 画像が劣化する事がある。
       image, orientation, size = self.resizeImage(image)
+      image = ImageTk.PhotoImage(image)
       images.append(image)
       durations.append(int(duration))
     return {
@@ -263,9 +266,12 @@ class Viewer(tk.Frame):
       fileData = self.openImage()
       self.files[self.current] = fileData
     i = self.getSubWindowIndex(fileData["orientation"])
-    self.subWindows[i].checkImages(fileData["images"], fileData["duration"])
-    self.updateText()
+    text = self.updateText()
+    if not self.isPrint:
+      text = ""
+    self.subWindows[i].checkImages(fileData["images"], fileData["duration"], text)
     self.subWindows[i].liftTop()
+    print(f"{fileData['path'].name}: {len(fileData['images'])}, {sum(fileData['duration'])}")
     if not self.isKeepMemory:
       self.files[self.current] = {"path": self.files[self.current]["path"]}
 
@@ -295,9 +301,6 @@ class Viewer(tk.Frame):
 
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
-    if not self.isPrint:
-      for subWindow in self.subWindows:
-        subWindow.deleteOldText()
 
 
 def argumentParser():
