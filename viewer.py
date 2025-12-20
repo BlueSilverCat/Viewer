@@ -2,8 +2,10 @@ import argparse
 import pathlib
 import re
 import tkinter as tk
+import uuid
 from tkinter import ttk
 
+import cv2
 import pyperclip
 import Utility as U
 from PIL import Image, ImageTk
@@ -27,12 +29,23 @@ def resize(image, width, height):
   return image.resize(size, Image.LANCZOS)
 
 
+def convertColor(image):
+  if len(image.shape) < 3:
+    return image
+  if image.shape[2] == 3:
+    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+  return cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+
+
 class SubWindow(tk.Toplevel):
   def __init__(self, master=None, title="", geometry="0x0+0+0"):
     super().__init__(master)
     self.image = None
-    self.text = None
-    self.oldId = None
+    self.sequence = []
+    self.durations = []
+    self.text = ""
+    self.oldTextId = None
+    self.animationId = 0
     self.info = fromGeometry(geometry)
     self.title(title)
     self.geometry(geometry)
@@ -41,22 +54,44 @@ class SubWindow(tk.Toplevel):
     self.canvas.configure(width=self.info[0], height=self.info[1], bg="gray")
     self.canvas.pack()
 
-  def setImage(self, image):
+  def checkImages(self, images, durations):
+    n = len(images)
+    if n == 1:
+      self.sequence = []
+      self.durations = []
+      self.drawImage(images[0])
+    else:
+      self.sequence = images
+      self.durations = durations
+      self.animationId += 1
+      self.animation(0, self.animationId)
+
+  def drawImage(self, image):
+    self.image = ImageTk.PhotoImage(image)  # 透過ファイルの場合は、描画に時間が掛かる。
+    self.canvas.create_image(self.info[0] // 2, self.info[1] // 2, image=self.image, anchor=tk.CENTER)
+
+  def animation(self, index, aid):
+    end = len(self.sequence)
+    if end == 0 or aid != self.animationId:
+      return
+    i = index if index < end else 0
+    image = self.sequence[i]
     self.image = ImageTk.PhotoImage(image)
     self.canvas.create_image(self.info[0] // 2, self.info[1] // 2, image=self.image, anchor=tk.CENTER)
+    self.canvas.after(self.durations[i], self.animation, i + 1, aid)
 
   def liftTop(self):
     self.attributes("-topmost", True)
     self.attributes("-topmost", False)
 
   def deleteOldText(self):
-    if self.oldId is not None:
-      self.canvas.delete(self.oldId)
+    if self.oldTextId is not None:
+      self.canvas.delete(self.oldTextId)
 
   def setText(self, text):
     self.text = text
     self.deleteOldText()
-    self.oldId = self.canvas.create_text(
+    self.oldTextId = self.canvas.create_text(
       self.info[0] // 2, 20, text=self.text, fill="red", font=("", 20), anchor=tk.CENTER
     )
 
@@ -66,6 +101,7 @@ class Viewer(tk.Frame):
     ".jpg",
     ".webp",
     ".png",
+    ".gif",
   )
 
   def __init__(self, master, directory, isRecurse, isKeepMemory):
@@ -82,6 +118,7 @@ class Viewer(tk.Frame):
     self.isPrint = False
     self.master.title("Viewer")
     self.master.resizable(True, False)
+    self.symlink = None
 
     self.setLabel()
     self.getResolutions()
@@ -144,6 +181,7 @@ class Viewer(tk.Frame):
     for w in self.subWindows:
       w.destroy()
     self.master.destroy()
+    self.symlink.unlink(missing_ok=True)
 
   def _getFiles(self, path):
     files = []
@@ -166,36 +204,68 @@ class Viewer(tk.Frame):
 
   def updateText(self):
     fileData = self.files[self.current]
-    text = f"{self.current:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}{fileData['image'].size}]"
+    text = f"{self.current:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}{fileData['images'][0].size}]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
     if self.isPrint:
       i = self.getSubWindowIndex(fileData["orientation"])
       self.subWindows[i].setText(text)
 
-  def openImage(self):
-    image = Image.open(self.files[self.current]["path"])
+  def resizeImage(self, image):
     w, h = image.size
     o = "landscape" if w >= h else "portrait"
     i = self.getSubWindowIndex(o)
-    image = resize(image, *self.resolutions[i])  # PhotoImageで保存しておくと、古い画像が残ってしまう
+    return resize(image, *self.resolutions[i]), o, (w, h)
+
+  def getImageData(self):
+    path = self.files[self.current]["path"]
+    image, orientation, size = self.resizeImage(Image.open(path))
     return {
-      "path": self.files[self.current]["path"],
-      "image": image,
-      "orientation": o,
-      "originalSize": (w, h),
+      "path": path,
+      "images": [image],
+      "duration": [0],
+      "orientation": orientation,
+      "originalSize": size,
+    }
+
+  def createSymlink(self, path):
+    if self.symlink is not None:
+      self.symlink.unlink(missing_ok=True)
+    self.symlink = pathlib.Path(f"viwer_{uuid.uuid4()}.temp")
+    self.symlink.symlink_to(path)
+
+  def openImage(self):
+    path = self.files[self.current]["path"]
+    self.createSymlink(path)
+    success, animation = cv2.imreadanimation(self.symlink)
+
+    if not success:
+      return self.getImageData()
+
+    images = []
+    durations = []
+    for frame, duration in zip(animation.frames, animation.durations, strict=True):
+      image = Image.fromarray(convertColor(frame))
+      image, orientation, size = self.resizeImage(image)
+      images.append(image)
+      durations.append(int(duration))
+    return {
+      "path": path,
+      "images": images,
+      "duration": durations,
+      "orientation": orientation,
+      "originalSize": size,
     }
 
   def drawImage(self):
     fileData = self.files[self.current]
-    if fileData.get("image", None) is None:
+    if fileData.get("images", None) is None:
       fileData = self.openImage()
       self.files[self.current] = fileData
     i = self.getSubWindowIndex(fileData["orientation"])
-    self.subWindows[i].setImage(fileData["image"])
+    self.subWindows[i].checkImages(fileData["images"], fileData["duration"])
     self.updateText()
     self.subWindows[i].liftTop()
-
     if not self.isKeepMemory:
       self.files[self.current] = {"path": self.files[self.current]["path"]}
 
@@ -235,15 +305,14 @@ def argumentParser():
   group = parser.add_mutually_exclusive_group(required=True)
   group.add_argument("-i", "--directory", dest="directory", type=pathlib.Path)
   group.add_argument("-c", "--clipboard", action="store_const", const="<clipboard>", dest="directory")
-  parser.set_defaults(directory="")
+  parser.set_defaults(directory=".")
   parser.add_argument("-r", "--recurse", action="store_true")
   parser.add_argument("-k", "--keepMemory", action="store_true")
 
   args = parser.parse_args()
   if args.directory == "<clipboard>":
-    path = pyperclip.paste()
-    if path[0] == '"' and path[-1] == '"':
-      path = path[1:-1]
+    path = pyperclip.paste()  # 稀に取得できない
+    path = path.strip('"')
     args.directory = pathlib.Path(path)
   return args
 
