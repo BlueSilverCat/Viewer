@@ -1,14 +1,16 @@
 import argparse
 import pathlib
 import re
+import threading
 import tkinter as tk
 import uuid
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from tkinter import ttk
 
 import cv2
 import pyperclip
 import Utility as U
-from PIL import Image, ImageTk
+from PIL import Image, ImageSequence, ImageTk
 
 
 def toGeometry(width, height, left, top):
@@ -22,7 +24,7 @@ def fromGeometry(geometry):
   return (0, 0, 0, 0)
 
 
-def resize(image, width, height):
+def resizeImage(image, width, height):
   w, h = image.size
   ratio = min(width / w, height / h)
   size = (int(w * ratio), int(h * ratio))
@@ -102,12 +104,13 @@ class Viewer(tk.Frame):
     ".png",
     ".gif",
   )
+  LandScape = "landscape"
+  Portrait = "portrait"
 
   def __init__(self, master, directory, isRecurse, isKeepMemory):
     super().__init__(master)
     self.subWindows = []
-    self.resolutions = []  # ディスプレイが2つ固定ならばもっと単純になる。
-    self.orientations = []
+    self.resolutions = []
     self.directory = directory
     self.isRecurse = isRecurse
     self.isKeepMemory = isKeepMemory
@@ -117,7 +120,6 @@ class Viewer(tk.Frame):
     self.isPrint = False
     self.master.title("Viewer")
     self.master.resizable(True, False)
-    self.symlink = None
 
     self.setLabel()
     self.getResolutions()
@@ -130,7 +132,7 @@ class Viewer(tk.Frame):
     self.liftTop()
 
   def setLabel(self):
-    self.labelText = tk.StringVar(value="test")
+    self.labelText = tk.StringVar(value=" ")
     self.label = ttk.Label(
       self,
       textvariable=self.labelText,
@@ -145,8 +147,11 @@ class Viewer(tk.Frame):
     self.label.pack()
 
   def getResolutions(self):
-    self.resolutions = U.getDisplaysResolution()
-    self.orientations = ["landscape" if width >= height else "portrait" for width, height in self.resolutions]
+    for width, height in U.getDisplaysResolution():
+      if width >= height:
+        self.resolutions.append((width, height, Viewer.LandScape))
+      else:
+        self.resolutions.append((width, height, Viewer.Portrait))
 
   def liftTop(self):
     self.master.attributes("-topmost", True)
@@ -163,14 +168,14 @@ class Viewer(tk.Frame):
     self.master.protocol("WM_DELETE_WINDOW", self.callDestroyAll)
 
   def createSubWindows(self):
-    for i, r in enumerate(self.resolutions):
+    for i, (width, height, _) in enumerate(self.resolutions):
       self.subWindows.append(
         SubWindow(
           self,
           title=f"subWindow{i}",
           geometry=toGeometry(
-            r[0],
-            r[1],
+            width,
+            height,
             self.resolutions[i - 1][0] if i != 0 else 0,
             0,
           ),
@@ -181,7 +186,6 @@ class Viewer(tk.Frame):
     for w in self.subWindows:
       w.destroy()
     self.master.destroy()
-    self.symlink.unlink(missing_ok=True)
 
   def callDestroyAll(self):
     self.destroyAll(None)
@@ -200,8 +204,8 @@ class Viewer(tk.Frame):
     self.end = len(self.files)
 
   def getSubWindowIndex(self, orientation):
-    for i, o in enumerate(self.orientations):
-      if o == orientation:
+    for i, (_, _, o) in enumerate(self.resolutions):
+      if orientation == o:
         return i
     return 0
 
@@ -213,45 +217,28 @@ class Viewer(tk.Frame):
     # print("\r\x1b[1M" + text, end="")
     return text
 
-  def resizeImage(self, image):
-    w, h = image.size
-    o = "landscape" if w >= h else "portrait"
-    i = self.getSubWindowIndex(o)
-    return resize(image, *self.resolutions[i]), o, (w, h)
+  def getImageFromFrame(self, frame):
+    image = Image.fromarray(convertColor(frame))  # 画像が劣化する事がある。
+    image = resizeImage(image, self.resolutions)
+    return ImageTk.PhotoImage(image)
 
-  def getImageData(self):
-    path = self.files[self.current]["path"]
-    image, orientation, size = self.resizeImage(Image.open(path))
-    image = ImageTk.PhotoImage(image)
-    return {
-      "path": path,
-      "images": [image],
-      "duration": [0],
-      "orientation": orientation,
-      "originalSize": size,
-    }
-
-  def createSymlink(self, path):
-    if self.symlink is not None:
-      self.symlink.unlink(missing_ok=True)
-    self.symlink = pathlib.Path(f"Viewer_{uuid.uuid4()}.temp")
-    self.symlink.symlink_to(path)
+  def getOrientation(self, size):
+    return Viewer.LandScape if size[0] >= size[1] else Viewer.Portrait
 
   def openImage(self):  # この処理を速くしたい
     path = self.files[self.current]["path"]
-    self.createSymlink(path)
-    success, animation = cv2.imreadanimation(self.symlink)
-    if not success:
-      return self.getImageData()
-
+    image = Image.open(path)
     images = []
     durations = []
-    for frame, duration in zip(animation.frames, animation.durations, strict=True):
-      image = Image.fromarray(convertColor(frame))  # 画像が劣化する事がある。
-      image, orientation, size = self.resizeImage(image)
+    size = image.size
+    orientation = self.getOrientation(size)
+    index = self.getSubWindowIndex(orientation)
+    for frame in ImageSequence.all_frames(image):
+      image = resizeImage(frame, self.resolutions[index][0], self.resolutions[index][1])
       image = ImageTk.PhotoImage(image)
       images.append(image)
-      durations.append(int(duration))
+      durations.append(frame.info.get("duration", 0))
+
     return {
       "path": path,
       "images": images,
