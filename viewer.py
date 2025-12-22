@@ -7,7 +7,7 @@ import uuid
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from tkinter import ttk
 
-import cv2
+# import cv2
 import pyperclip
 import Utility as U
 from PIL import Image, ImageSequence, ImageTk
@@ -31,12 +31,12 @@ def resizeImage(image, width, height):
   return image.resize(size, Image.LANCZOS)
 
 
-def convertColor(image):
-  if len(image.shape) < 3:
-    return image
-  if image.shape[2] == 3:
-    return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-  return cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
+# def convertColor(image):
+#   if len(image.shape) < 3:
+#     return image
+#   if image.shape[2] == 3:
+#     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+#   return cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
 
 
 class SubWindow(tk.Toplevel):
@@ -216,11 +216,6 @@ class Viewer(tk.Frame):
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
     return text
-
-  def getImageFromFrame(self, frame):
-    image = Image.fromarray(convertColor(frame))  # 画像が劣化する事がある。
-    image = resizeImage(image, self.resolutions)
-    return ImageTk.PhotoImage(image)
 
   def getOrientation(self, size):
     return Viewer.LandScape if size[0] >= size[1] else Viewer.Portrait
