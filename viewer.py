@@ -6,6 +6,7 @@ from tkinter import ttk
 
 import pyperclip
 import Utility as U
+import WindowsApi as WinApi
 from PIL import Image, ImageSequence, ImageTk
 
 
@@ -44,7 +45,7 @@ class SubWindow(tk.Toplevel):
     self.canvas.pack()
 
   def checkImages(self, images, durations, text):
-    self.clearCanvas()
+    self.canvas.delete("all")
     if len(images) == 1:
       self.sequence = []
       self.durations = []
@@ -66,6 +67,7 @@ class SubWindow(tk.Toplevel):
       return
     i = index if index < end else 0
     self.image = self.sequence[i]
+    self.canvas.delete("all")
     self.canvas.create_image(self.geometryData[0] // 2, self.geometryData[1] // 2, image=self.image, anchor=tk.CENTER)
     self.drawText(text)
     self.canvas.after(self.durations[i], self.animation, i + 1, aid, text)
@@ -73,9 +75,6 @@ class SubWindow(tk.Toplevel):
   def liftTop(self):
     self.attributes("-topmost", True)
     self.attributes("-topmost", False)
-
-  def clearCanvas(self):
-    self.canvas.delete("all")
 
   def drawText(self, text):
     if text == "":
@@ -134,7 +133,7 @@ class Viewer(tk.Frame):
     self.label.pack()
 
   def getResolutions(self):
-    for width, height in U.getDisplaysResolution():
+    for width, height in WinApi.getDisplaysResolution():
       if width >= height:
         self.resolutions.append((width, height, Viewer.LandScape))
       else:
