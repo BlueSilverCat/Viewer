@@ -4,7 +4,6 @@ import re
 import tkinter as tk
 from tkinter import ttk
 
-# import cv2
 import pyperclip
 import Utility as U
 from PIL import Image, ImageSequence, ImageTk
@@ -45,9 +44,8 @@ class SubWindow(tk.Toplevel):
     self.canvas.pack()
 
   def checkImages(self, images, durations, text):
-    n = len(images)
     self.clearCanvas()
-    if n == 1:
+    if len(images) == 1:
       self.sequence = []
       self.durations = []
       self.drawImage(images[0])
@@ -115,7 +113,7 @@ class Viewer(tk.Frame):
     self.master.geometry(f"{self.resolutions[0][0] // 2}x35+0+0")
     self.createSubWindows()
     self.setBinds()
-    self.getFiles()
+    self.callGetFiles()
     self.drawImage()
     self.pack()
     self.liftTop()
@@ -179,18 +177,28 @@ class Viewer(tk.Frame):
   def callDestroyAll(self):
     self.destroyAll(None)
 
-  def _getFiles(self, path):
+  def getFiles(self, path):
     files = []
     for file in path.iterdir():
       if file.is_file() and file.suffix in Viewer.Extensions:
         files.append({"path": file})
       if file.is_dir() and self.isRecurse:
-        files += self._getFiles(file)
+        files += self.getFiles(file)
     return files
 
-  def getFiles(self):
-    self.files = self._getFiles(self.directory)
+  def callGetFiles(self):
+    self.files = self.getFiles(self.directory)
     self.end = len(self.files)
+
+  def updateText(self):
+    data = self.files[self.current]
+    text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {data['path'].name} "
+    text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}({data['images'][0].width()}, {data['images'][0].height()})]"
+    self.labelText.set(text)
+    # print("\r\x1b[1M" + text, end="")
+    if not self.isPrint:
+      return ""
+    return text
 
   def getSubWindowIndex(self, orientation):
     for i, (_, _, o) in enumerate(self.resolutions):
@@ -198,38 +206,29 @@ class Viewer(tk.Frame):
         return i
     return 0
 
-  def updateText(self):
-    fileData = self.files[self.current]
-    text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}({fileData['images'][0].width()}, {fileData['images'][0].height()})]"
-    self.labelText.set(text)
-    # print("\r\x1b[1M" + text, end="")
-    if not self.isPrint:
-      return ""
-    return text
-
   def getOrientation(self, size):
     return Viewer.LandScape if size[0] >= size[1] else Viewer.Portrait
 
-  def openImage(self):  # この処理を速くしたい
-    path = self.files[self.current]["path"]
-    image = Image.open(path)
-    size = image.size
-    orientation = self.getOrientation(size)
-    index = self.getSubWindowIndex(orientation)
-    resolution = (self.resolutions[index][0], self.resolutions[index][1])
+  def getAllFrames(self, image, width, height):
     images = []
     durations = []
     for frame in ImageSequence.all_frames(image):
-      image = resizeImage(frame, *resolution)
-      image = ImageTk.PhotoImage(image)
-      images.append(image)
+      images.append(ImageTk.PhotoImage(resizeImage(frame, width, height)))
       durations.append(frame.info.get("duration", 1000))
+    return images, durations
+
+  def openImage(self):
+    path = self.files[self.current]["path"]
+    image = Image.open(path)
+    size = image.size
+    index = self.getSubWindowIndex(self.getOrientation(size))
+    images, durations = self.getAllFrames(image, self.resolutions[index][0], self.resolutions[index][1])
     return {
       "path": path,
       "images": images,
-      "duration": durations,
-      "orientation": orientation,
+      "durations": durations,
       "originalSize": size,
+      "subWindow": index,
     }
 
   def getFileData(self):
@@ -238,11 +237,11 @@ class Viewer(tk.Frame):
     return self.files[self.current]
 
   def drawImage(self):
-    fileData = self.getFileData()
-    i = self.getSubWindowIndex(fileData["orientation"])
+    data = self.getFileData()
+    n = data["subWindow"]
     text = self.updateText()
-    self.subWindows[i].checkImages(fileData["images"], fileData["duration"], text)
-    self.subWindows[i].liftTop()
+    self.subWindows[n].checkImages(data["images"], data["durations"], text)
+    self.subWindows[n].liftTop()
     if not self.isKeepMemory:
       self.files[self.current] = {"path": self.files[self.current]["path"]}
 
