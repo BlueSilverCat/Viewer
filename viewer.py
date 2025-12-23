@@ -1,10 +1,7 @@
 import argparse
 import pathlib
 import re
-import threading
 import tkinter as tk
-import uuid
-from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from tkinter import ttk
 
 # import cv2
@@ -29,14 +26,6 @@ def resizeImage(image, width, height):
   ratio = min(width / w, height / h)
   size = (int(w * ratio), int(h * ratio))
   return image.resize(size, Image.LANCZOS)
-
-
-# def convertColor(image):
-#   if len(image.shape) < 3:
-#     return image
-#   if image.shape[2] == 3:
-#     return cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-#   return cv2.cvtColor(image, cv2.COLOR_BGRA2RGBA)
 
 
 class SubWindow(tk.Toplevel):
@@ -211,10 +200,11 @@ class Viewer(tk.Frame):
 
   def updateText(self):
     fileData = self.files[self.current]
-    # text = f"{self.current:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}{fileData['images'][0].size}]"
     text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {fileData['path'].name} [{fileData['originalSize'][0]}, {fileData['originalSize'][1]}({fileData['images'][0].width()}, {fileData['images'][0].height()})]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
+    if not self.isPrint:
+      return ""
     return text
 
   def getOrientation(self, size):
@@ -223,17 +213,17 @@ class Viewer(tk.Frame):
   def openImage(self):  # この処理を速くしたい
     path = self.files[self.current]["path"]
     image = Image.open(path)
-    images = []
-    durations = []
     size = image.size
     orientation = self.getOrientation(size)
     index = self.getSubWindowIndex(orientation)
+    resolution = (self.resolutions[index][0], self.resolutions[index][1])
+    images = []
+    durations = []
     for frame in ImageSequence.all_frames(image):
-      image = resizeImage(frame, self.resolutions[index][0], self.resolutions[index][1])
+      image = resizeImage(frame, *resolution)
       image = ImageTk.PhotoImage(image)
       images.append(image)
-      durations.append(frame.info.get("duration", 0))
-
+      durations.append(frame.info.get("duration", 1000))
     return {
       "path": path,
       "images": images,
@@ -242,18 +232,17 @@ class Viewer(tk.Frame):
       "originalSize": size,
     }
 
+  def getFileData(self):
+    if self.files[self.current].get("images", None) is None:
+      self.files[self.current] = self.openImage()
+    return self.files[self.current]
+
   def drawImage(self):
-    fileData = self.files[self.current]
-    if fileData.get("images", None) is None:
-      fileData = self.openImage()
-      self.files[self.current] = fileData
+    fileData = self.getFileData()
     i = self.getSubWindowIndex(fileData["orientation"])
     text = self.updateText()
-    if not self.isPrint:
-      text = ""
     self.subWindows[i].checkImages(fileData["images"], fileData["duration"], text)
     self.subWindows[i].liftTop()
-    print(f"{fileData['path'].name}: {len(fileData['images'])}, {sum(fileData['duration'])}")
     if not self.isKeepMemory:
       self.files[self.current] = {"path": self.files[self.current]["path"]}
 
