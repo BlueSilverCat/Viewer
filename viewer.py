@@ -190,8 +190,7 @@ class Viewer(tk.Frame):
     self.files = self.getFiles(self.directory)
     self.end = len(self.files)
 
-  def updateText(self):
-    data = self.files[self.current]
+  def updateText(self, data):
     text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {data['path'].name} "
     text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}({data['images'][0].width()}, {data['images'][0].height()})]"
     self.labelText.set(text)
@@ -232,18 +231,20 @@ class Viewer(tk.Frame):
     }
 
   def getFileData(self):
-    if self.files[self.current].get("images", None) is None:
-      self.files[self.current] = self.openImage()
-    return self.files[self.current]
+    U.customPrint(self.files[self.current])
+    if self.files[self.current].get("images", None) is not None:
+      return self.files[self.current]
+    data = self.openImage()
+    if self.isKeepMemory:
+      self.files[self.current] = data
+    return data
 
   def drawImage(self):
     data = self.getFileData()
     n = data["subWindow"]
-    text = self.updateText()
+    text = self.updateText(data)
     self.subWindows[n].checkImages(data["images"], data["durations"], text)
     self.subWindows[n].liftTop()
-    if not self.isKeepMemory:
-      self.files[self.current] = {"path": self.files[self.current]["path"]}
 
   def listTopAll(self, _event):
     for subWindow in self.subWindows:
