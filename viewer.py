@@ -231,7 +231,6 @@ class Viewer(tk.Frame):
     }
 
   def getFileData(self):
-    U.customPrint(self.files[self.current])
     if self.files[self.current].get("images", None) is not None:
       return self.files[self.current]
     data = self.openImage()
