@@ -1,31 +1,16 @@
 import argparse
+import concurrent.futures as cf
 import pathlib
-import re
 import tkinter as tk
+import winsound
 from tkinter import ttk
 
 import pyperclip
-import Utility as U
 import WindowsApi as WinApi
-from PIL import Image, ImageSequence, ImageTk
+from PIL import ImageTk
 
-
-def toGeometry(width, height, left, top):
-  return f"{width}x{height}+{left}+{top}"
-
-
-def fromGeometry(geometry):
-  m = re.match(r"(?P<width>\d+)x(?P<height>\d+)\+(?P<left>\d+)\+(?P<top>\d+)", geometry)
-  if m is not None:
-    return (int(m["width"]), int(m["height"]), int(m["left"]), int(m["top"]))
-  return (0, 0, 0, 0)
-
-
-def resizeImage(image, width, height):
-  w, h = image.size
-  ratio = min(width / w, height / h)
-  size = (int(w * ratio), int(h * ratio))
-  return image.resize(size, Image.LANCZOS)
+import functions as f
+import utility as u
 
 
 class SubWindow(tk.Toplevel):
@@ -36,7 +21,7 @@ class SubWindow(tk.Toplevel):
     self.durations = []
     self.text = ""
     self.animationId = 0
-    self.geometryData = fromGeometry(geometry)
+    self.geometryData = f.fromGeometry(geometry)
     self.title(title)
     self.geometry(geometry)
     self.wm_overrideredirect(True)
@@ -45,7 +30,6 @@ class SubWindow(tk.Toplevel):
     self.canvas.pack()
 
   def checkImages(self, images, durations, text):
-    self.canvas.delete("all")
     if len(images) == 1:
       self.sequence = []
       self.durations = []
@@ -58,6 +42,7 @@ class SubWindow(tk.Toplevel):
       self.animation(0, self.animationId, text)
 
   def drawImage(self, image):
+    self.canvas.delete("all")
     self.image = image
     self.canvas.create_image(self.geometryData[0] // 2, self.geometryData[1] // 2, image=self.image, anchor=tk.CENTER)
 
@@ -83,16 +68,10 @@ class SubWindow(tk.Toplevel):
     self.canvas.create_text(self.geometryData[0] // 2, 20, text=self.text, fill="red", font=("", 20), anchor=tk.CENTER)
 
 
-class Viewer(tk.Frame):
-  Extensions = (
-    ".jpg",
-    ".webp",
-    ".png",
-    ".gif",
-  )
-  LandScape = "landscape"
-  Portrait = "portrait"
+ProcessExecutor = cf.ThreadPoolExecutor()
 
+
+class Viewer(tk.Frame):
   def __init__(self, master, directory, isRecurse, isKeepMemory):
     super().__init__(master)
     self.subWindows = []
@@ -101,7 +80,7 @@ class Viewer(tk.Frame):
     self.isRecurse = isRecurse
     self.isKeepMemory = isKeepMemory
     self.files = []  # {"path":, "image":, "orientation":, "originalSize"}
-    self.current = 0
+    self.current = -1
     self.end = 0
     self.isPrint = False
     self.master.title("Viewer")
@@ -112,8 +91,7 @@ class Viewer(tk.Frame):
     self.master.geometry(f"{self.resolutions[0][0] // 2}x35+0+0")
     self.createSubWindows()
     self.setBinds()
-    self.callGetFiles()
-    self.drawImage()
+    self.getFiles()
     self.pack()
     self.liftTop()
 
@@ -135,9 +113,9 @@ class Viewer(tk.Frame):
   def getResolutions(self):
     for width, height in WinApi.getDisplaysResolution():
       if width >= height:
-        self.resolutions.append((width, height, Viewer.LandScape))
+        self.resolutions.append((width, height, f.LandScape))
       else:
-        self.resolutions.append((width, height, Viewer.Portrait))
+        self.resolutions.append((width, height, f.Portrait))
 
   def liftTop(self):
     self.master.attributes("-topmost", True)
@@ -159,7 +137,7 @@ class Viewer(tk.Frame):
         SubWindow(
           self,
           title=f"subWindow{i}",
-          geometry=toGeometry(
+          geometry=f.toGeometry(
             width,
             height,
             self.resolutions[i - 1][0] if i != 0 else 0,
@@ -176,18 +154,15 @@ class Viewer(tk.Frame):
   def callDestroyAll(self):
     self.destroyAll(None)
 
-  def getFiles(self, path):
-    files = []
-    for file in path.iterdir():
-      if file.is_file() and file.suffix in Viewer.Extensions:
-        files.append({"path": file})
-      if file.is_dir() and self.isRecurse:
-        files += self.getFiles(file)
-    return files
-
-  def callGetFiles(self):
-    self.files = self.getFiles(self.directory)
+  def setFiles(self, future):
+    self.files = future.result()
     self.end = len(self.files)
+    self.labelText.set(f"{self.directory}: {self.end}")
+    winsound.Beep(500, 500)
+
+  def getFiles(self):
+    ft = ProcessExecutor.submit(f.getFiles, self.directory, self.isRecurse)
+    ft.add_done_callback(self.setFiles)
 
   def updateText(self, data):
     text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {data['path'].name} "
@@ -198,47 +173,15 @@ class Viewer(tk.Frame):
       return ""
     return text
 
-  def getSubWindowIndex(self, orientation):
-    for i, (_, _, o) in enumerate(self.resolutions):
-      if orientation == o:
-        return i
-    return 0
+  def getFileData(self, i):
+    data = self.files[i]
+    if self.files[i].get("images", None) is None:
+      data = f.openImage(self.files[i]["path"], self.resolutions)
+      if self.isKeepMemory:
+        self.files[i] = data
+    self.drawImage(data)
 
-  def getOrientation(self, size):
-    return Viewer.LandScape if size[0] >= size[1] else Viewer.Portrait
-
-  def getAllFrames(self, image, width, height):
-    images = []
-    durations = []
-    for frame in ImageSequence.all_frames(image):
-      images.append(ImageTk.PhotoImage(resizeImage(frame, width, height)))
-      durations.append(frame.info.get("duration", 1000))
-    return images, durations
-
-  def openImage(self):
-    path = self.files[self.current]["path"]
-    image = Image.open(path)
-    size = image.size
-    index = self.getSubWindowIndex(self.getOrientation(size))
-    images, durations = self.getAllFrames(image, self.resolutions[index][0], self.resolutions[index][1])
-    return {
-      "path": path,
-      "images": images,
-      "durations": durations,
-      "originalSize": size,
-      "subWindow": index,
-    }
-
-  def getFileData(self):
-    if self.files[self.current].get("images", None) is not None:
-      return self.files[self.current]
-    data = self.openImage()
-    if self.isKeepMemory:
-      self.files[self.current] = data
-    return data
-
-  def drawImage(self):
-    data = self.getFileData()
+  def drawImage(self, data):
     n = data["subWindow"]
     text = self.updateText(data)
     self.subWindows[n].checkImages(data["images"], data["durations"], text)
@@ -255,18 +198,22 @@ class Viewer(tk.Frame):
     self.liftTop()
 
   def next(self, _event):
+    if self.end < 1:
+      return
     if self.current < self.end - 1:
       self.current += 1
     else:
       self.current = 0
-    self.drawImage()
+    ProcessExecutor.submit(self.getFileData, self.current)
 
   def previous(self, _event):
+    if self.end < 1:
+      return
     if self.current > 0:
       self.current -= 1
     else:
       self.current = self.end - 1
-    self.drawImage()
+    ProcessExecutor.submit(self.getFileData, self.current)
 
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
