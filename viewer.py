@@ -65,7 +65,9 @@ class SubWindow(tk.Toplevel):
     if text == "":
       return
     self.text = text
-    self.canvas.create_text(self.geometryData[0] // 2, 20, text=self.text, fill="red", font=("", 20), anchor=tk.CENTER)
+    self.canvas.create_text(
+      self.geometryData[0] // 2, 40, text=self.text, fill="magenta", font=("TkFixedFont", 16, "bold"), anchor=tk.CENTER
+    )
 
 
 class Viewer(tk.Frame):
@@ -94,7 +96,7 @@ class Viewer(tk.Frame):
 
     self.setLabel()
     self.getResolutions()
-    self.master.geometry(f"{self.resolutions[0][0] // 2}x80+0+0")
+    self.master.geometry(f"{self.resolutions[0][0] // 2}x75+0+0")
     self.createSubWindows()
     self.setBinds()
     self.getFiles()
