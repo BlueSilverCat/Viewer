@@ -94,7 +94,7 @@ class Viewer(tk.Frame):
 
     self.setLabel()
     self.getResolutions()
-    self.master.geometry(f"{self.resolutions[0][0] // 2}x35+0+0")
+    self.master.geometry(f"{self.resolutions[0][0] // 2}x80+0+0")
     self.createSubWindows()
     self.setBinds()
     self.getFiles()
@@ -102,13 +102,14 @@ class Viewer(tk.Frame):
     self.liftTop()
 
   def setLabel(self):
-    self.labelText = tk.StringVar(value=" ")
+    self.labelText = tk.StringVar(value="\n\n")
     self.label = ttk.Label(
       self,
       textvariable=self.labelText,
       anchor=tk.CENTER,
-      font=(None, 16),
+      font=("TkFixedFont", 16),
       width=256,
+      justify="center",
       foreground="white",
       background="black",
       relief="groove",
@@ -164,7 +165,7 @@ class Viewer(tk.Frame):
   def setFiles(self, future):
     self.files = future.result()
     self.end = len(self.files)
-    self.labelText.set(f"{self.directory}: {self.end}")
+    # self.labelText.set(f"{self.directory}: {self.end}\n\n")
     self.event_generate(Viewer.EventFinishGetFiles)
 
   def getFiles(self):
@@ -172,13 +173,22 @@ class Viewer(tk.Frame):
     ft.add_done_callback(self.setFiles)
 
   def updateText(self, data):
-    text = f"{self.current + 1:{len(str(self.end))}} / {self.end}: {data['path'].name} "
+    relativeName = pathlib.Path(f.subPaths(self.directory, data["path"]))
+    text = f"{self.current + 1:0{len(str(self.end))}} / {self.end}\n"
+    text += f"{relativeName.parent}\n"
+    text += f"{relativeName.name} "
     text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}({data['images'][0].width()}, {data['images'][0].height()})]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
     if not self.isPrint:
       return ""
     return text
+
+  def drawImage(self, data):
+    n = data["subWindow"]
+    text = self.updateText(data)
+    self.subWindows[n].checkImages(data["images"], data["durations"], text)
+    self.subWindows[n].liftTop()
 
   def getFileData(self, i):
     data = self.files[i]
@@ -189,12 +199,6 @@ class Viewer(tk.Frame):
         self.files[i] = data
         self.lock.release()
     self.drawImage(data)
-
-  def drawImage(self, data):
-    n = data["subWindow"]
-    text = self.updateText(data)
-    self.subWindows[n].checkImages(data["images"], data["durations"], text)
-    self.subWindows[n].liftTop()
 
   def listTopAll(self, _event):
     for subWindow in self.subWindows:

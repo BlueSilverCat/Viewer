@@ -80,3 +80,8 @@ def openImage(path, resolutions):
     "originalSize": size,
     "subWindow": index,
   }
+
+
+def subPaths(path1, path2):
+  pattern = re.sub(r"\\", r"\\\\", str(path1))
+  return re.sub(rf"{pattern}", ".", rf"{path2}")
