@@ -96,7 +96,7 @@ class Viewer(tk.Frame):
 
     self.setLabel()
     self.getResolutions()
-    self.master.geometry(f"{self.resolutions[0][0] // 2}x75+0+0")
+    self.master.geometry(f"{self.resolutions[0][0] // 2}x78+0+0")
     self.createSubWindows()
     self.setBinds()
     self.getFiles()
@@ -132,13 +132,23 @@ class Viewer(tk.Frame):
     self.focus_set()
 
   def setBinds(self):
-    self.bind_all("<KeyPress-Right>", self.next)
-    self.bind_all(Viewer.EventFinishGetFiles, self.next)
-    self.bind_all("<KeyPress-Left>", self.previous)
+    self.bind_all("<KeyPress-Right>", lambda event: self.next(event, 1))
+    self.bind_all("<KeyPress-2>", lambda event: self.jump(event, "start"))
+    self.bind_all("<KeyPress-5>", lambda event: self.jump(event, "middle"))
+    self.bind_all("<KeyPress-8>", lambda event: self.jump(event, "end"))
+    self.bind_all("<KeyPress-3>", lambda event: self.next(event, 10))
+    self.bind_all("<KeyPress-6>", lambda event: self.next(event, 100))
+    self.bind_all("<KeyPress-9>", lambda event: self.next(event, 1000))
+    self.bind_all(Viewer.EventFinishGetFiles, lambda event: self.next(event, 1))
+    self.bind_all("<KeyPress-Left>", lambda event: self.previous(event, 1))
+    self.bind_all("<KeyPress-1>", lambda event: self.previous(event, 10))
+    self.bind_all("<KeyPress-4>", lambda event: self.previous(event, 100))
+    self.bind_all("<KeyPress-7>", lambda event: self.previous(event, 1000))
     self.bind_all("<KeyPress-Up>", self.listTopAll)
     self.bind_all("<KeyPress-Down>", self.withDraw)
     self.bind_all("<KeyPress-Escape>", self.destroyAll)
     self.bind_all("<KeyPress-F12>", self.setPrint)
+    # self.bind_all("<Key>", self.debug)
     self.master.protocol("WM_DELETE_WINDOW", self.callDestroyAll)
 
   def createSubWindows(self):
@@ -175,7 +185,7 @@ class Viewer(tk.Frame):
     ft.add_done_callback(self.setFiles)
 
   def updateText(self, data):
-    relativeName = pathlib.Path(f.subPaths(self.directory, data["path"]))
+    relativeName = pathlib.Path(f.subPaths(self.directory.absolute(), data["path"]))
     text = f"{self.current + 1:0{len(str(self.end))}} / {self.end}\n"
     text += f"{relativeName.parent}\n"
     text += f"{relativeName.name} "
@@ -212,26 +222,39 @@ class Viewer(tk.Frame):
       subWindow.withdraw()
     self.liftTop()
 
-  def next(self, _event):
+  def next(self, _event, n):
     if self.end < 1:
       return
-    if self.current < self.end - 1:
-      self.current += 1
-    else:
-      self.current = 0
+    self.current += n
+    while self.current >= self.end:
+      self.current -= self.end
     ThreadExecutor.submit(self.getFileData, self.current)
 
-  def previous(self, _event):
+  def previous(self, _event, n):
     if self.end < 1:
       return
-    if self.current > 0:
-      self.current -= 1
-    else:
+    self.current -= n
+    while self.current < 0:
+      self.current += self.end
+    ThreadExecutor.submit(self.getFileData, self.current)
+
+  def jump(self, _event, pos):
+    if self.end < 1:
+      return
+    if pos == "start":
+      self.current = 0
+    elif pos == "end":
       self.current = self.end - 1
+    else:
+      self.current = self.end // 2
     ThreadExecutor.submit(self.getFileData, self.current)
 
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
+
+  # def debug(self, event):
+  #   print(event)
+  #   print(f"Keysym: {event.keysym}, Keycode: {event.keycode}")
 
 
 def argumentParser():
