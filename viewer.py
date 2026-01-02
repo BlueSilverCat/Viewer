@@ -2,6 +2,7 @@ import argparse
 import concurrent.futures as cf
 import pathlib
 import tkinter as tk
+from threading import Lock
 from tkinter import ttk
 
 import pyperclip
@@ -9,7 +10,7 @@ import WindowsApi as WinApi
 
 import functions as f
 
-ProcessExecutor = cf.ThreadPoolExecutor()
+ThreadExecutor = cf.ThreadPoolExecutor()
 
 
 class SubWindow(tk.Toplevel):
@@ -87,6 +88,7 @@ class Viewer(tk.Frame):
     self.current = -1
     self.end = 0
     self.isPrint = False
+    self.lock = Lock()
     self.master.title("Viewer")
     self.master.resizable(True, False)
 
@@ -166,7 +168,7 @@ class Viewer(tk.Frame):
     self.event_generate(Viewer.EventFinishGetFiles)
 
   def getFiles(self):
-    ft = ProcessExecutor.submit(f.getFiles, self.directory, self.isRecurse, Viewer.Extensions)
+    ft = ThreadExecutor.submit(f.getFiles, self.directory, self.isRecurse, Viewer.Extensions)
     ft.add_done_callback(self.setFiles)
 
   def updateText(self, data):
@@ -183,7 +185,9 @@ class Viewer(tk.Frame):
     if self.files[i].get("images", None) is None:
       data = f.openImage(self.files[i]["path"], self.resolutions)
       if self.isKeepMemory:
+        self.lock.acquire()
         self.files[i] = data
+        self.lock.release()
     self.drawImage(data)
 
   def drawImage(self, data):
@@ -209,7 +213,7 @@ class Viewer(tk.Frame):
       self.current += 1
     else:
       self.current = 0
-    ProcessExecutor.submit(self.getFileData, self.current)
+    ThreadExecutor.submit(self.getFileData, self.current)
 
   def previous(self, _event):
     if self.end < 1:
@@ -218,7 +222,7 @@ class Viewer(tk.Frame):
       self.current -= 1
     else:
       self.current = self.end - 1
-    ProcessExecutor.submit(self.getFileData, self.current)
+    ThreadExecutor.submit(self.getFileData, self.current)
 
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
