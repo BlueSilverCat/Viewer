@@ -1,20 +1,13 @@
 import concurrent.futures as cf
 import functools
+import operator
 import re
-import threading
+from collections import deque
 
 from PIL import Image, ImageSequence, ImageTk
 
-import utility as u
-
 LandScape = "landscape"
 Portrait = "portrait"
-Extensions = (
-  ".jpg",
-  ".webp",
-  ".png",
-  ".gif",
-)
 
 
 def toGeometry(width, height, left, top):
@@ -28,14 +21,27 @@ def fromGeometry(geometry):
   return (0, 0, 0, 0)
 
 
-def getFiles(path, isRecurse):
-  files = []
-  for file in path.iterdir():
-    if file.is_file() and file.suffix in Extensions:
-      files.append({"path": file})
-    if file.is_dir() and isRecurse:
-      files += getFiles(file, True)
-  return files
+# def getFiles(path, isRecurse):
+#   files = []
+#   for file in path.iterdir():
+#     if file.is_file() and file.suffix in Extensions:
+#       files.append({"path": file})
+#     if file.is_dir() and isRecurse:
+#       files += getFiles(file, True)
+#   return files
+
+
+def getFiles(path, isRecurse, extensions=None):
+  files = deque(path.iterdir())
+  result = []
+  while len(files) > 0:
+    file = files.popleft()
+    if file.is_file() and (extensions is None or file.suffix in extensions):
+      result.append({"path": file})
+    elif file.is_dir() and isRecurse:
+      files.extend(file.iterdir())
+  result.sort(key=operator.itemgetter("path"))
+  return result
 
 
 def resizeImage(image, width, height):
@@ -46,7 +52,6 @@ def resizeImage(image, width, height):
 
 
 def getFrame(frame, width, height):
-  # return resizeImage(frame, width, height), frame.info.get("duration", 1000)
   return ImageTk.PhotoImage(resizeImage(frame, width, height)), frame.info.get("duration", 1000)
 
 

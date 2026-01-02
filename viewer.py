@@ -2,15 +2,12 @@ import argparse
 import concurrent.futures as cf
 import pathlib
 import tkinter as tk
-import winsound
 from tkinter import ttk
 
 import pyperclip
 import WindowsApi as WinApi
-from PIL import ImageTk
 
 import functions as f
-import utility as u
 
 
 class SubWindow(tk.Toplevel):
@@ -72,6 +69,14 @@ ProcessExecutor = cf.ThreadPoolExecutor()
 
 
 class Viewer(tk.Frame):
+  Extensions = (
+    ".jpg",
+    ".webp",
+    ".png",
+    ".gif",
+  )
+  EventFinishGetFiles = "<<FinishGetFiles>>"
+
   def __init__(self, master, directory, isRecurse, isKeepMemory):
     super().__init__(master)
     self.subWindows = []
@@ -124,6 +129,7 @@ class Viewer(tk.Frame):
 
   def setBinds(self):
     self.bind_all("<KeyPress-Right>", self.next)
+    self.bind_all(Viewer.EventFinishGetFiles, self.next)
     self.bind_all("<KeyPress-Left>", self.previous)
     self.bind_all("<KeyPress-Up>", self.listTopAll)
     self.bind_all("<KeyPress-Down>", self.withDraw)
@@ -158,10 +164,10 @@ class Viewer(tk.Frame):
     self.files = future.result()
     self.end = len(self.files)
     self.labelText.set(f"{self.directory}: {self.end}")
-    winsound.Beep(500, 500)
+    self.event_generate(Viewer.EventFinishGetFiles)
 
   def getFiles(self):
-    ft = ProcessExecutor.submit(f.getFiles, self.directory, self.isRecurse)
+    ft = ProcessExecutor.submit(f.getFiles, self.directory, self.isRecurse, Viewer.Extensions)
     ft.add_done_callback(self.setFiles)
 
   def updateText(self, data):
