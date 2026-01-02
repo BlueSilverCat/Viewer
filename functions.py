@@ -50,7 +50,7 @@ def getAllFrames(image, width, height):
   durations = []
   with cf.ThreadPoolExecutor() as ex:  # OK
     func = functools.partial(getFrame, width=width, height=height)
-    results = ex.map(func, ImageSequence.all_frames(image))
+    results = ex.map(func, ImageSequence.all_frames(image), timeout=60)
     for img, duration in results:
       images.append(img)
       durations.append(duration)
