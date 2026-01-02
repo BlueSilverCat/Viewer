@@ -9,6 +9,8 @@ import WindowsApi as WinApi
 
 import functions as f
 
+ProcessExecutor = cf.ThreadPoolExecutor()
+
 
 class SubWindow(tk.Toplevel):
   def __init__(self, master=None, title="", geometry="0x0+0+0"):
@@ -65,9 +67,6 @@ class SubWindow(tk.Toplevel):
     self.canvas.create_text(self.geometryData[0] // 2, 20, text=self.text, fill="red", font=("", 20), anchor=tk.CENTER)
 
 
-ProcessExecutor = cf.ThreadPoolExecutor()
-
-
 class Viewer(tk.Frame):
   Extensions = (
     ".jpg",
@@ -84,7 +83,7 @@ class Viewer(tk.Frame):
     self.directory = directory
     self.isRecurse = isRecurse
     self.isKeepMemory = isKeepMemory
-    self.files = []  # {"path":, "image":, "orientation":, "originalSize"}
+    self.files = []  # {"path":, "images":, "durations":, "originalSize":, "subWindow":}
     self.current = -1
     self.end = 0
     self.isPrint = False
@@ -236,7 +235,7 @@ def argumentParser():
 
   args = parser.parse_args()
   if args.directory == "<clipboard>":
-    path = pyperclip.paste()  # 稀に取得できない
+    path = pyperclip.paste()  # 稀に取得できない?
     path = path.strip('"')
     args.directory = pathlib.Path(path)
   return args

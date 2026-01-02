@@ -21,16 +21,6 @@ def fromGeometry(geometry):
   return (0, 0, 0, 0)
 
 
-# def getFiles(path, isRecurse):
-#   files = []
-#   for file in path.iterdir():
-#     if file.is_file() and file.suffix in Extensions:
-#       files.append({"path": file})
-#     if file.is_dir() and isRecurse:
-#       files += getFiles(file, True)
-#   return files
-
-
 def getFiles(path, isRecurse, extensions=None):
   files = deque(path.iterdir())
   result = []
@@ -55,12 +45,7 @@ def getFrame(frame, width, height):
   return ImageTk.PhotoImage(resizeImage(frame, width, height)), frame.info.get("duration", 1000)
 
 
-def fff(result):
-  image, duration = result
-  return ImageTk.PhotoImage(image), duration
-
-
-def getAllFramesParallel(image, width, height):
+def getAllFrames(image, width, height):
   images = []
   durations = []
   with cf.ThreadPoolExecutor() as ex:  # OK
@@ -69,15 +54,6 @@ def getAllFramesParallel(image, width, height):
     for img, duration in results:
       images.append(img)
       durations.append(duration)
-  return images, durations
-
-
-def getAllFrames(image, width, height):
-  images = []
-  durations = []
-  for frame in ImageSequence.all_frames(image):
-    images.append(ImageTk.PhotoImage(resizeImage(frame, width, height)))
-    durations.append(frame.info.get("duration", 1000))
   return images, durations
 
 
@@ -96,7 +72,7 @@ def openImage(path, resolutions):
   image = Image.open(path)
   size = image.size
   index = getSubWindowIndex(resolutions, getOrientation(size))
-  images, durations = getAllFramesParallel(image, resolutions[index][0], resolutions[index][1])
+  images, durations = getAllFrames(image, resolutions[index][0], resolutions[index][1])
   return {
     "path": path,
     "images": images,
