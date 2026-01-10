@@ -90,6 +90,7 @@ class Viewer(tk.Frame):
     self.current = -1
     self.end = 0
     self.isPrint = False
+    self.directoryIndices = []
     self.lock = Lock()
     self.master.title("Viewer")
     self.master.resizable(True, False)
@@ -148,6 +149,8 @@ class Viewer(tk.Frame):
     self.bind_all("<KeyPress-Down>", self.withDraw)
     self.bind_all("<KeyPress-Escape>", self.destroyAll)
     self.bind_all("<KeyPress-F12>", self.setPrint)
+    self.bind_all("<KeyPress-Next>", self.jumpDirectoryNext)
+    self.bind_all("<KeyPress-Prior>", self.jumpDirectoryPrevious)
     # self.bind_all("<Key>", self.debug)
     self.master.protocol("WM_DELETE_WINDOW", self.callDestroyAll)
 
@@ -174,10 +177,20 @@ class Viewer(tk.Frame):
   def callDestroyAll(self):
     self.destroyAll(None)
 
+  def setDirectoryIndices(self):
+    old = ""
+    self.directoryIndices = []
+    for i, x in enumerate(self.files):
+      parent = x["path"].parent
+      if str(parent) != old:
+        old = str(parent)
+        self.directoryIndices.append(i)
+
   def setFiles(self, future):
     self.files = future.result()
     self.end = len(self.files)
     # self.labelText.set(f"{self.directory}: {self.end}\n\n")
+    self.setDirectoryIndices()
     self.event_generate(Viewer.EventFinishGetFiles)
 
   def getFiles(self):
@@ -252,9 +265,30 @@ class Viewer(tk.Frame):
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
 
-  # def debug(self, event):
-  #   print(event)
-  #   print(f"Keysym: {event.keysym}, Keycode: {event.keycode}")
+  def jumpDirectoryNext(self, _envent):
+    n = len(self.directoryIndices)
+    for i in range(n):
+      if i != n - 1 and self.current >= self.directoryIndices[i] and self.current < self.directoryIndices[i + 1]:
+        self.current = self.directoryIndices[i + 1]
+        break
+      if i == n - 1:
+        self.current = 0  # self.directoryIndices[0]
+    ThreadExecutor.submit(self.getFileData, self.current)
+
+  def jumpDirectoryPrevious(self, _envent):
+    n = len(self.directoryIndices)
+    for i in range(n - 1, -1, -1):
+      if i != 0 and self.current <= self.directoryIndices[i] and self.current > self.directoryIndices[i - 1]:
+        self.current = self.directoryIndices[i - 1]
+        break
+      if i == 0:
+        self.current = self.directoryIndices[-1]
+    ThreadExecutor.submit(self.getFileData, self.current)
+
+
+# def debug(self, event):
+#   print(event)
+#   print(f"Keysym: {event.keysym}, Keycode: {event.keycode}")
 
 
 def argumentParser():
