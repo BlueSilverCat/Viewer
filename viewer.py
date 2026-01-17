@@ -25,7 +25,7 @@ class SubWindow(tk.Toplevel):
     self.title(title)
     self.geometry(geometry)
     self.wm_overrideredirect(True)
-    self.canvas = tk.Canvas(self)
+    self.canvas = tk.Canvas(self, highlightthickness=0)
     self.canvas.configure(width=self.geometryData[0], height=self.geometryData[1], bg="gray")
     self.canvas.pack()
 
