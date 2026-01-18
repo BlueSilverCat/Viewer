@@ -68,8 +68,10 @@ def getSubWindowIndex(resolutions, orientation):
   return 0
 
 
-def openImage(path, resolutions):
+def openImage(path, resolutions, angle):
   image = Image.open(path)
+  if angle != 0:
+    image = image.rotate(angle)
   size = image.size
   index = getSubWindowIndex(resolutions, getOrientation(size))
   images, durations = getAllFrames(image, resolutions[index][0], resolutions[index][1])

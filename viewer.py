@@ -92,6 +92,7 @@ class Viewer(tk.Frame):
     self.isPrint = False
     self.directoryIndices = []
     self.lock = Lock()
+    self.rotateOld = {"index": -1, "angle": 0}
     self.master.title("Viewer")
     self.master.resizable(True, False)
 
@@ -151,6 +152,7 @@ class Viewer(tk.Frame):
     self.bind_all("<KeyPress-F12>", self.setPrint)
     self.bind_all("<KeyPress-Next>", self.jumpDirectoryNext)
     self.bind_all("<KeyPress-Prior>", self.jumpDirectoryPrevious)
+    self.bind_all("<KeyPress-r>", self.rotateImage)
     # self.bind_all("<Key>", self.debug)
     self.master.protocol("WM_DELETE_WINDOW", self.callDestroyAll)
 
@@ -215,10 +217,10 @@ class Viewer(tk.Frame):
     self.subWindows[n].checkImages(data["images"], data["durations"], text)
     self.subWindows[n].liftTop()
 
-  def getFileData(self, i):
+  def getFileData(self, i, angle=0):
     data = self.files[i]
     if self.files[i].get("images", None) is None:
-      data = f.openImage(self.files[i]["path"], self.resolutions)
+      data = f.openImage(self.files[i]["path"], self.resolutions, angle)
       if self.isKeepMemory:
         self.lock.acquire()
         self.files[i] = data
@@ -284,6 +286,15 @@ class Viewer(tk.Frame):
       if i == 0:
         self.current = self.directoryIndices[-1]
     ThreadExecutor.submit(self.getFileData, self.current)
+
+  def rotateImage(self, _event):
+    if self.files[self.current].get("images", None) is not None:
+      self.files[self.current]["images"] = []
+    angle = 180
+    if self.rotateOld["index"] == self.current:
+      angle = 180 if self.rotateOld["angle"] == 0 else 0
+    self.rotateOld = {"index": self.current, "angle": angle}
+    ThreadExecutor.submit(self.getFileData, self.current, angle=angle)
 
 
 # def debug(self, event):
