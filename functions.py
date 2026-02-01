@@ -6,6 +6,9 @@ from collections import deque
 
 from PIL import Image, ImageSequence, ImageTk
 
+import utility as u
+
+# TheadExecutor = cf.ThreadPoolExecutor()
 LandScape = "landscape"
 Portrait = "portrait"
 
@@ -30,7 +33,7 @@ def getFiles(path, isRecurse, extensions=None):
       result.append({"path": file})
     elif file.is_dir() and isRecurse:
       files.extend(file.iterdir())
-  result.sort(key=operator.itemgetter("path"))
+  u.naturalSorted(files, key=operator.itemgetter("path"))
   return result
 
 
@@ -41,19 +44,22 @@ def resizeImage(image, width, height):
   return image.resize(size, Image.LANCZOS)
 
 
-def getFrame(frame, width, height):
+def getFrame(frame, width, height, angle):
+  if angle != 0:
+    frame = frame.rotate(angle)
   return ImageTk.PhotoImage(resizeImage(frame, width, height)), frame.info.get("duration", 1000)
 
 
-def getAllFrames(image, width, height):
+def getAllFrames(image, width, height, angle):
   images = []
   durations = []
+  func = functools.partial(getFrame, width=width, height=height, angle=angle)
   with cf.ThreadPoolExecutor() as ex:  # OK
-    func = functools.partial(getFrame, width=width, height=height)
     results = ex.map(func, ImageSequence.all_frames(image), timeout=60)
-    for img, duration in results:
-      images.append(img)
-      durations.append(duration)
+  # results = TheadExecutor.map(func, ImageSequence.all_frames(image), timeout=60)
+  for img, duration in results:
+    images.append(img)
+    durations.append(duration)
   return images, durations
 
 
@@ -70,11 +76,10 @@ def getSubWindowIndex(resolutions, orientation):
 
 def openImage(path, resolutions, angle):
   image = Image.open(path)
-  if angle != 0:
-    image = image.rotate(angle)
+  image.load()
   size = image.size
   index = getSubWindowIndex(resolutions, getOrientation(size))
-  images, durations = getAllFrames(image, resolutions[index][0], resolutions[index][1])
+  images, durations = getAllFrames(image, resolutions[index][0], resolutions[index][1], angle)
   return {
     "path": path,
     "images": images,
