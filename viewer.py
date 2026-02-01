@@ -66,7 +66,12 @@ class SubWindow(tk.Toplevel):
       return
     self.text = text
     self.canvas.create_text(
-      self.geometryData[0] // 2, 40, text=self.text, fill="magenta", font=("TkFixedFont", 16, "bold"), anchor=tk.CENTER
+      self.geometryData[0] // 2,
+      40,
+      text=self.text,
+      fill="magenta",
+      font=("TkFixedFont", 16, "bold"),
+      anchor=tk.CENTER,
     )
 
 
@@ -91,7 +96,8 @@ class Viewer(tk.Frame):
     self.end = 0
     self.isPrint = False
     self.directoryIndices = []
-    self.lock = Lock()
+    self.lockData = Lock()
+    self.lockTask = Lock()
     self.rotateOld = {"index": -1, "angle": 0}
     self.master.title("Viewer")
     self.master.resizable(True, False)
@@ -104,6 +110,8 @@ class Viewer(tk.Frame):
     self.getFiles()
     self.pack()
     self.liftTop()
+
+    self.taskQueue = []
 
   def setLabel(self):
     self.labelText = tk.StringVar(value="\n\n")
@@ -204,7 +212,8 @@ class Viewer(tk.Frame):
     text = f"{self.current + 1:0{len(str(self.end))}} / {self.end}\n"
     text += f"{relativeName.parent}\n"
     text += f"{relativeName.name} "
-    text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}({data['images'][0].width()}, {data['images'][0].height()})]"
+    text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}"
+    text += f"({data['images'][0].width()}, {data['images'][0].height()})]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
     if not self.isPrint:
@@ -222,9 +231,8 @@ class Viewer(tk.Frame):
     if self.files[i].get("images", None) is None:
       data = f.openImage(self.files[i]["path"], self.resolutions, angle)
       if self.isKeepMemory:
-        self.lock.acquire()
-        self.files[i] = data
-        self.lock.release()
+        with self.lockData:
+          self.files[i] = data
     self.drawImage(data)
 
   def listTopAll(self, _event):
@@ -237,13 +245,20 @@ class Viewer(tk.Frame):
       subWindow.withdraw()
     self.liftTop()
 
+  def caller(self, angle=0):
+    with self.lockTask:
+      future = ThreadExecutor.submit(self.getFileData, self.taskQueue[-1], angle)
+      future.result(timeout=60)
+      self.taskQueue = []
+
   def next(self, _event, n):
     if self.end < 1:
       return
     self.current += n
     while self.current >= self.end:
       self.current -= self.end
-    ThreadExecutor.submit(self.getFileData, self.current)
+    self.taskQueue.append(self.current)
+    ThreadExecutor.submit(self.caller)
 
   def previous(self, _event, n):
     if self.end < 1:
@@ -251,7 +266,8 @@ class Viewer(tk.Frame):
     self.current -= n
     while self.current < 0:
       self.current += self.end
-    ThreadExecutor.submit(self.getFileData, self.current)
+    self.taskQueue.append(self.current)
+    ThreadExecutor.submit(self.caller)
 
   def jump(self, _event, pos):
     if self.end < 1:
@@ -262,7 +278,8 @@ class Viewer(tk.Frame):
       self.current = self.end - 1
     else:
       self.current = self.end // 2
-    ThreadExecutor.submit(self.getFileData, self.current)
+    self.taskQueue.append(self.current)
+    ThreadExecutor.submit(self.caller)
 
   def setPrint(self, _event):
     self.isPrint = not self.isPrint
@@ -275,7 +292,8 @@ class Viewer(tk.Frame):
         break
       if i == n - 1:
         self.current = 0  # self.directoryIndices[0]
-    ThreadExecutor.submit(self.getFileData, self.current)
+    self.taskQueue.append(self.current)
+    ThreadExecutor.submit(self.caller)
 
   def jumpDirectoryPrevious(self, _envent):
     n = len(self.directoryIndices)
@@ -285,16 +303,18 @@ class Viewer(tk.Frame):
         break
       if i == 0:
         self.current = self.directoryIndices[-1]
-    ThreadExecutor.submit(self.getFileData, self.current)
+    self.taskQueue.append(self.current)
+    ThreadExecutor.submit(self.caller)
 
-  def rotateImage(self, _event):
+  def rotateImage(self, _event):  # 回転を保持し続けるか?
     if self.files[self.current].get("images", None) is not None:
       self.files[self.current]["images"] = []
     angle = 180
     if self.rotateOld["index"] == self.current:
       angle = 180 if self.rotateOld["angle"] == 0 else 0
     self.rotateOld = {"index": self.current, "angle": angle}
-    ThreadExecutor.submit(self.getFileData, self.current, angle=angle)
+    self.taskQueue.append(self.current)
+    ThreadExecutor.submit(self.caller, angle)
 
 
 # def debug(self, event):
