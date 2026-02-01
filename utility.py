@@ -2,6 +2,7 @@ import datetime
 import functools
 import gc
 import random
+import re
 import threading
 import time
 
@@ -69,3 +70,21 @@ def printFuncInfo(
     return wrapper
 
   return printFuncInfoWrapper
+
+
+def wrapsplitStrNum(func):
+  @functools.wraps(func)
+  def wrapper(*args, **kwargs):
+    return splitStrNum(func(*args, **kwargs))
+
+  return wrapper
+
+
+def splitStrNum(s):
+  return [int(c) if c.isdecimal() else c for c in re.split(r"(\d+)", s)]
+
+
+def naturalSorted(l, *, key=None, reverse=False):
+  if key is None:
+    return sorted(l, key=splitStrNum, reverse=reverse)
+  return sorted(l, key=wrapsplitStrNum(key), reverse=reverse)
