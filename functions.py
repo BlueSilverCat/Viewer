@@ -1,14 +1,21 @@
 import concurrent.futures as cf
 import functools
+import itertools
 import operator
 import re
+import sys
+import time
 from collections import deque
+from multiprocessing import Lock, shared_memory
 
+import cv2
+import Decorator as D
+import numpy as np
 from PIL import Image, ImageSequence, ImageTk
 
 import utility as u
 
-# TheadExecutor = cf.ThreadPoolExecutor()
+ThreadExecutor = cf.ThreadPoolExecutor()
 LandScape = "landscape"
 Portrait = "portrait"
 
@@ -33,34 +40,27 @@ def getFiles(path, isRecurse, extensions=None):
       result.append({"path": file})
     elif file.is_dir() and isRecurse:
       files.extend(file.iterdir())
-  u.naturalSorted(files, key=operator.itemgetter("path"))
-  return result
+  return u.naturalSorted(result, key=lambda x: str(x["path"]))
 
 
 def resizeImage(image, width, height):
-  w, h = image.size
+  w, h = image.shape[1], image.shape[0]
   ratio = min(width / w, height / h)
   size = (int(w * ratio), int(h * ratio))
-  return image.resize(size, Image.LANCZOS)
+  return cv2.resize(image, size, interpolation=cv2.INTER_LANCZOS4)
 
 
 def getFrame(frame, width, height, angle):
-  if angle != 0:
-    frame = frame.rotate(angle)
-  return ImageTk.PhotoImage(resizeImage(frame, width, height)), frame.info.get("duration", 1000)
+  if angle == 180:
+    frame = cv2.rotate(frame, cv2.ROTATE_180)
+  return cvToPil(resizeImage(frame, width, height))
 
 
-def getAllFrames(image, width, height, angle):
-  images = []
-  durations = []
+@D.printFuncInfo()
+def getAllFrames(animation, width, height, angle):
   func = functools.partial(getFrame, width=width, height=height, angle=angle)
-  with cf.ThreadPoolExecutor() as ex:  # OK
-    results = ex.map(func, ImageSequence.all_frames(image), timeout=60)
-  # results = TheadExecutor.map(func, ImageSequence.all_frames(image), timeout=60)
-  for img, duration in results:
-    images.append(img)
-    durations.append(duration)
-  return images, durations
+  results = ThreadExecutor.map(func, animation.frames, timeout=60)
+  return list(results)
 
 
 def getOrientation(size):
@@ -74,21 +74,44 @@ def getSubWindowIndex(resolutions, orientation):
   return 0
 
 
+@D.printFuncInfo()
+def readAnimation(path):
+  if not path.is_file():
+    return None
+  with path.open("rb") as file:
+    buf = np.frombuffer(file.read(), dtype=np.uint8).reshape(1, -1)
+  success, animation = cv2.imdecodeanimation(buf)
+  if not success:
+    return None
+  return animation
+
+
+@D.printFuncInfo()
 def openImage(path, resolutions, angle):
-  image = Image.open(path)
-  image.load()
-  size = image.size
+  animation = readAnimation(path)
+  size = (animation.frames[0].shape[1], animation.frames[0].shape[0])
   index = getSubWindowIndex(resolutions, getOrientation(size))
-  images, durations = getAllFrames(image, resolutions[index][0], resolutions[index][1], angle)
+  images = getAllFrames(animation, resolutions[index][0], resolutions[index][1], angle)
   return {
     "path": path,
-    "images": images,
-    "durations": durations,
     "originalSize": size,
     "subWindow": index,
+    "images": images,
+    "durations": animation.durations.tolist(),
   }
 
 
 def subPaths(path1, path2):
   pattern = re.sub(r"\\", r"\\\\", str(path1))
   return re.sub(rf"{pattern}", ".", rf"{path2}")
+
+
+def cvToPil(image):
+  newImage = image.copy()
+  if newImage.ndim == 2:  # モノクロ
+    pass
+  elif newImage.shape[2] == 3:  # カラー
+    newImage = cv2.cvtColor(newImage, cv2.COLOR_BGR2RGB)
+  elif newImage.shape[2] == 4:  # 透過
+    newImage = cv2.cvtColor(newImage, cv2.COLOR_BGRA2RGBA)
+  return Image.fromarray(newImage)
