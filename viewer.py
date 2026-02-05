@@ -5,6 +5,7 @@ import tkinter as tk
 from threading import Lock
 from tkinter import ttk
 
+import Decorator as D
 import pyperclip
 import WindowsApi as WinApi
 
@@ -22,12 +23,22 @@ class SubWindow(tk.Toplevel):
     self.text = ""
     self.animationId = 0
     self.geometryData = f.fromGeometry(geometry)
+    self.center = (self.geometryData[0] // 2, self.geometryData[1] // 2)
     self.title(title)
     self.geometry(geometry)
     self.wm_overrideredirect(True)
     self.canvas = tk.Canvas(self, highlightthickness=0)
     self.canvas.configure(width=self.geometryData[0], height=self.geometryData[1], bg="gray")
     self.canvas.pack()
+    self.imageId = self.canvas.create_image(*self.center, image=None, anchor=tk.CENTER)
+    self.textId = self.canvas.create_text(
+      10,
+      20,
+      text=self.text,
+      fill="magenta",
+      font=("TkFixedFont", 16, "bold"),
+      anchor=tk.NW,
+    )
 
   def checkImages(self, images, durations, text):
     if len(images) == 1:
@@ -42,9 +53,8 @@ class SubWindow(tk.Toplevel):
       self.animation(0, self.animationId, text)
 
   def drawImage(self, image):
-    self.canvas.delete("all")
     self.image = image
-    self.canvas.create_image(self.geometryData[0] // 2, self.geometryData[1] // 2, image=self.image, anchor=tk.CENTER)
+    self.canvas.itemconfig(self.imageId, image=self.image)
 
   def animation(self, index, aid, text):
     end = len(self.sequence)
@@ -52,8 +62,7 @@ class SubWindow(tk.Toplevel):
       return
     i = index if index < end else 0
     self.image = self.sequence[i]
-    self.canvas.delete("all")
-    self.canvas.create_image(self.geometryData[0] // 2, self.geometryData[1] // 2, image=self.image, anchor=tk.CENTER)
+    self.canvas.itemconfig(self.imageId, image=self.image)
     self.drawText(text)
     self.canvas.after(self.durations[i], self.animation, i + 1, aid, text)
 
@@ -62,17 +71,10 @@ class SubWindow(tk.Toplevel):
     self.attributes("-topmost", False)
 
   def drawText(self, text):
-    if text == "":
+    if text == self.text:
       return
     self.text = text
-    self.canvas.create_text(
-      self.geometryData[0] // 2,
-      40,
-      text=self.text,
-      fill="magenta",
-      font=("TkFixedFont", 16, "bold"),
-      anchor=tk.CENTER,
-    )
+    self.canvas.itemconfig(self.textId, text=self.text)
 
 
 class Viewer(tk.Frame):
@@ -220,12 +222,14 @@ class Viewer(tk.Frame):
       return ""
     return text
 
+  @D.printFuncInfo()
   def drawImage(self, data):
     n = data["subWindow"]
     text = self.updateText(data)
     self.subWindows[n].checkImages(data["images"], data["durations"], text)
     self.subWindows[n].liftTop()
 
+  @D.printFuncInfo()
   def getFileData(self, i, angle=0):
     data = self.files[i]
     if self.files[i].get("images", None) is None:
@@ -308,7 +312,7 @@ class Viewer(tk.Frame):
 
   def rotateImage(self, _event):  # 回転を保持し続けるか?
     if self.files[self.current].get("images", None) is not None:
-      self.files[self.current]["images"] = []
+      self.files[self.current]["images"] = None
     angle = 180
     if self.rotateOld["index"] == self.current:
       angle = 180 if self.rotateOld["angle"] == 0 else 0
