@@ -84,7 +84,13 @@ def splitStrNum(s):
   return [int(c) if c.isdecimal() else c for c in re.split(r"(\d+)", s)]
 
 
-def naturalSorted(l, *, key=None, reverse=False):
+def naturalSorted(lt, *, key=None, reverse=False):
   if key is None:
-    return sorted(l, key=splitStrNum, reverse=reverse)
-  return sorted(l, key=wrapsplitStrNum(key), reverse=reverse)
+    return sorted(lt, key=splitStrNum, reverse=reverse)
+  return sorted(lt, key=wrapsplitStrNum(key), reverse=reverse)
+
+
+def naturalSort(lt, *, key=None, reverse=False):
+  if key is None:
+    lt.sort(key=splitStrNum, reverse=reverse)
+  lt.sort(key=wrapsplitStrNum(key), reverse=reverse)
