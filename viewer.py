@@ -12,6 +12,7 @@ import WindowsApi as WinApi
 import functions as f
 
 ThreadExecutor = cf.ThreadPoolExecutor()
+from PIL import ImageTk
 
 
 class SubWindow(tk.Toplevel):
@@ -53,7 +54,7 @@ class SubWindow(tk.Toplevel):
       self.animation(0, self.animationId, text)
 
   def drawImage(self, image):
-    self.image = image
+    self.image = ImageTk.PhotoImage(image, master=self)
     self.canvas.itemconfig(self.imageId, image=self.image)
 
   def animation(self, index, aid, text):
@@ -61,6 +62,8 @@ class SubWindow(tk.Toplevel):
     if end == 0 or aid != self.animationId:
       return
     i = index if index < end else 0
+    if not isinstance(self.sequence[i], ImageTk.PhotoImage):
+      self.sequence[i] = ImageTk.PhotoImage(self.sequence[i], master=self)
     self.image = self.sequence[i]
     self.canvas.itemconfig(self.imageId, image=self.image)
     self.drawText(text)
@@ -215,7 +218,7 @@ class Viewer(tk.Frame):
     text += f"{relativeName.parent}\n"
     text += f"{relativeName.name} "
     text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}"
-    text += f"({data['images'][0].width()}, {data['images'][0].height()})]"
+    text += f"{data['images'][0].size}]"
     self.labelText.set(text)
     # print("\r\x1b[1M" + text, end="")
     if not self.isPrint:
