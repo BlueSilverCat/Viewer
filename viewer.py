@@ -5,14 +5,13 @@ import tkinter as tk
 from threading import Lock
 from tkinter import ttk
 
-import Decorator as D
 import pyperclip
 import WindowsApi as WinApi
+from PIL import ImageTk
 
 import functions as f
 
 ThreadExecutor = cf.ThreadPoolExecutor()
-from PIL import ImageTk
 
 
 class SubWindow(tk.Toplevel):
@@ -48,7 +47,7 @@ class SubWindow(tk.Toplevel):
       self.drawImage(images[0])
       self.drawText(text)
     else:
-      self.sequence = images
+      self.sequence = images.copy()
       self.durations = durations
       self.animationId += 1
       self.animation(0, self.animationId, text)
@@ -212,9 +211,9 @@ class Viewer(tk.Frame):
     ft = ThreadExecutor.submit(f.getFiles, self.directory, self.isRecurse, Viewer.Extensions)
     ft.add_done_callback(self.setFiles)
 
-  def updateText(self, data):
+  def updateText(self, i, data):
     relativeName = pathlib.Path(f.subPaths(self.directory.absolute(), data["path"]))
-    text = f"{self.current + 1:0{len(str(self.end))}} / {self.end}\n"
+    text = f"{i + 1:0{len(str(self.end))}} / {self.end}\n"
     text += f"{relativeName.parent}\n"
     text += f"{relativeName.name} "
     text += f"[{data['originalSize'][0]}, {data['originalSize'][1]}"
@@ -225,14 +224,12 @@ class Viewer(tk.Frame):
       return ""
     return text
 
-  @D.printFuncInfo()
-  def drawImage(self, data):
+  def drawImage(self, i, data):
     n = data["subWindow"]
-    text = self.updateText(data)
+    text = self.updateText(i, data)
     self.subWindows[n].checkImages(data["images"], data["durations"], text)
     self.subWindows[n].liftTop()
 
-  @D.printFuncInfo()
   def getFileData(self, i, angle=0):
     data = self.files[i]
     if self.files[i].get("images", None) is None:
@@ -240,7 +237,7 @@ class Viewer(tk.Frame):
       if self.isKeepMemory:
         with self.lockData:
           self.files[i] = data
-    self.drawImage(data)
+    self.drawImage(i, data)
 
   def listTopAll(self, _event):
     for subWindow in self.subWindows:
