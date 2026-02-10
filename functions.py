@@ -1,17 +1,11 @@
 import concurrent.futures as cf
 import functools
-import itertools
-import operator
 import re
-import sys
-import time
 from collections import deque
-from multiprocessing import Lock, shared_memory
 
 import cv2
-import Decorator as D
 import numpy as np
-from PIL import Image, ImageSequence, ImageTk
+from PIL import Image
 
 import utility as u
 
@@ -56,7 +50,6 @@ def getFrame(frame, width, height, angle):
   return cvToPil(resizeImage(frame, width, height))
 
 
-@D.printFuncInfo()
 def getAllFrames(animation, width, height, angle):
   func = functools.partial(getFrame, width=width, height=height, angle=angle)
   results = ThreadExecutor.map(func, animation.frames, timeout=60)
@@ -74,7 +67,6 @@ def getSubWindowIndex(resolutions, orientation):
   return 0
 
 
-@D.printFuncInfo()
 def readAnimation(path):
   if not path.is_file():
     return None
@@ -86,7 +78,6 @@ def readAnimation(path):
   return animation
 
 
-@D.printFuncInfo()
 def openImage(path, resolutions, angle):
   animation = readAnimation(path)
   size = (animation.frames[0].shape[1], animation.frames[0].shape[0])
